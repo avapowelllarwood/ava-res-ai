@@ -1,0 +1,163 @@
+"""
+Create a Word (.docx) report containing "The Project" section generated from project inputs.
+Usage:
+  - Provide a JSON file with project inputs: python Untitled-1.py path/to/inputs.json
+  - Or run without args to enter inputs interactively.
+Requires: python-docx (pip install python-docx)
+Optional: openai package and OPENAI_API_KEY env var to use GPT for text generation.
+"""
+import os
+import sys
+import json
+
+try:
+    from docx import Document
+except Exception as e:
+    raise SystemExit("Missing dependency 'python-docx'. Install with: pip install python-docx")
+
+PROJECT_KEYS = [
+    ("Project name", "Project name"),
+    ("Location", "Location (suburb/town, distance from nearest centre, shire/region, state)"),
+    ("Renewable Energy Zone", "Renewable Energy Zone (if relevant)"),
+    ("Technology type", "Technology type (battery / wind / solar / hybrid)"),
+    ("Capacity", "Capacity and key technical details (MW, MWh, turbine count, duration, etc.)"),
+    ("Expected output", "Expected electricity output / households supplied (if applicable)"),
+    ("Site area", "Site area (hectares)"),
+    ("Site characteristics", "Site characteristics (footprint, current land use, distance to town, nearby landmarks, topography, vegetation cover, distance buffers, access roads)"),
+    ("Key components", "Key project components (battery units, turbines, inverters, substations, access roads, fire safety systems, landscaping, visual design features, turbine height, etc.)"),
+    ("Grid connection", "Grid connection details (substation, transmission line, proximity to planned or existing infrastructure)"),
+    ("Purpose", "Purpose of the project (grid stability, enabling renewables, emissions reduction, energy affordability, etc.)"),
+    ("Site reasons", "Reasons for site selection (resource availability, grid access, transport links, low environmental constraints, land compatibility, distance from dwellings)"),
+    ("Supporting materials", "Supporting materials (maps, newsletters, downloads, “click to enlarge” images)"),
+    ("Planning pathway", "Planning pathway (planning permit, environmental approvals, regulators)"),
+    ("Current stage", "Current stage of development"),
+    ("Next key date", "Next key date (submission, milestone, construction start)"),
+    ("Traditional Custodians", "Traditional Custodians of the land"),
+    ("Engagement completed", "Community engagement completed (letters, drop-ins, committees, media, etc.)"),
+    ("Engagement planned", "Community engagement planned (dates, activities, how to be involved)"),
+    ("Benefit approach", "Community benefit-sharing approach (schemes, sponsorships, partnerships, programs)"),
+    ("Sponsorship examples", "Sponsorship opportunities or examples (clubs, events, groups)"),
+    ("Opportunities", "Opportunities for involvement (supplier registration, sponsorship requests, community feedback channels)"),
+    ("Anticipated benefits", "Anticipated community and local economic benefits (jobs, suppliers, sponsorships, investment, benefit sharing)"),
+    ("Local jobs", "Local jobs and supplier opportunities (construction jobs, operations roles, supply chain)"),
+    ("Energy system benefits", "Energy system benefits (grid stability, reliability, affordability, emissions reduction)"),
+    ("Environmental benefits", "Environmental benefits (renewable targets, farming compatibility, biodiversity, fire breaks, restoration/decommissioning outcomes)"),
+    ("News URL", "Project website - News page URL"),
+    ("Contact URL", "Project website - Contact Us page URL"),
+    ("Registration", "Registration form link or instructions"),
+    ("Supplier registration", "Supplier registration option (yes/no)"),
+    ("Project email", "Project contact email"),
+    ("Project phone", "Project contact phone and contact person"),
+    ("Media email", "Media enquiries email"),
+    ("Complaints link", "Complaints handling link")
+]
+
+def load_inputs_from_json(path):
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return data
+
+def prompt_for_inputs():
+    data = {}
+    for key, desc in PROJECT_KEYS:
+        prompt = f"{desc} [{key}]: "
+        val = input(prompt).strip()
+        data[key] = val if val else "[insert]"
+    return data
+
+def build_user_prompt(inputs):
+    # Reuse the user's provided instruction style for "The Project"
+    prompt_lines = []
+    prompt_lines.append("Use the PROJECT INPUTS provided below. Ignore any irrelevant fields.")
+    prompt_lines.append("")
+    prompt_lines.append('You are drafting the "The Project" section of a public-facing RES project website.')
+    prompt_lines.append("Your output must be 4–6 paragraphs, written in plain, accessible Australian English, suitable for a local community audience.")
+    prompt_lines.append("The tone should be clear, factual, and friendly — informative but not promotional.")
+    prompt_lines.append("")
+    prompt_lines.append("Required structure:")
+    prompt_lines.append("1. The Project – Introduce the project name, technology, and location. Briefly describe the site.")
+    prompt_lines.append("2. Explain why the project is being proposed and what role it plays in the clean energy transition, based on the technology type.")
+    prompt_lines.append("3. Planning Pathway – Outline approvals pathway and where the project currently sits in that process. Indicate next key date (e.g. submission date).")
+    prompt_lines.append("4. Community Engagement – Describe how RES has engaged or will engage with the community and stakeholders.")
+    prompt_lines.append("5. Benefits – Highlight anticipated benefits such as sponsorships, community investment through benefit sharing, jobs and supplier opportunities.")
+    prompt_lines.append("6. Next Steps & Further Information – Direct readers to the News page for updates and the Contact Us page to engage on any aspect of the Project.")
+    prompt_lines.append("")
+    prompt_lines.append("PROJECT INPUTS:")
+    for k, _ in PROJECT_KEYS:
+        prompt_lines.append(f"{k}: {inputs.get(k, '[insert]')}")
+    return "\n".join(prompt_lines)
+
+def generate_local_section(inputs):
+    # fallback templated text (4-6 paragraphs)
+    name = inputs.get("Project name", "[insert project name]")
+    tech = inputs.get("Technology type", "[insert technology]")
+    loc = inputs.get("Location", "[insert location]")
+    site_char = inputs.get("Site characteristics", "")
+    purpose = inputs.get("Purpose", "")
+    planning = inputs.get("Planning pathway", "planning permit and environmental approvals")
+    stage = inputs.get("Current stage", "[insert stage]")
+    next_date = inputs.get("Next key date", "[insert date]")
+    engagement = inputs.get("Engagement planned", "drop-in sessions and direct updates to local stakeholders")
+    benefits = inputs.get("Anticipated benefits", "local jobs and community investment opportunities")
+    news = inputs.get("News URL", "[insert news page URL]")
+    contact = inputs.get("Contact URL", "[insert contact page URL]")
+
+    p1 = f"{name} is proposed as a {tech} project located {loc}. The site is described as {site_char or '[site description]'}."
+    p2 = f"The project is being proposed to {purpose or 'support the transition to cleaner energy, improving grid stability and reducing emissions'}. As a {tech} project it is expected to contribute to local and regional renewable energy objectives."
+    p3 = f"Planning pathway: The project will follow {planning}. It is currently at the {stage} stage. The next key date is {next_date}."
+    p4 = f"Community engagement: RES has engaged or will engage with neighbours and the local community through {engagement}. The project team will provide updates and opportunities to ask questions."
+    p5 = f"Benefits: The project is expected to bring {benefits}, including opportunities for local suppliers and potential community benefit-sharing initiatives."
+    p6 = f"Next steps & further information: Updates will be posted on the project News page ({news}) and people can contact the project team via the Contact Us page ({contact})."
+    return "\n\n".join([p1, p2, p3, p4, p5, p6])
+
+def try_generate_with_openai(prompt_text):
+    try:
+        import openai
+    except Exception:
+        return None
+    key = os.getenv("OPENAI_API_KEY")
+    if not key:
+        return None
+    openai.api_key = key
+    try:
+        resp = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role":"system","content":"You are a helpful assistant that writes clear community-facing project text in Australian English."},
+                {"role":"user","content":prompt_text}
+            ],
+            temperature=0.2,
+            max_tokens=800
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception:
+        return None
+
+def write_docx(title, body_text, out_path):
+    doc = Document()
+    doc.add_heading(title, level=1)
+    for para in body_text.split("\n\n"):
+        doc.add_paragraph(para.strip())
+    doc.save(out_path)
+
+def main():
+    if len(sys.argv) > 1:
+        path = sys.argv[1]
+        inputs = load_inputs_from_json(path)
+    else:
+        print("No input JSON supplied — prompt for inputs (leave blank to insert placeholder).")
+        inputs = prompt_for_inputs()
+
+    prompt_text = build_user_prompt(inputs)
+    generated = try_generate_with_openai(prompt_text)
+    if not generated:
+        generated = generate_local_section(inputs)
+
+    project_name = inputs.get("Project name", "Project")
+    safe_name = "".join(c for c in project_name if c.isalnum() or c in " _-").strip() or "Project"
+    out_file = f"{safe_name}_Report.docx"
+    write_docx(f"{project_name} — The Project", generated, out_file)
+    print(f"Report written to: {out_file}")
+
+if __name__ == "__main__":
+    main()
